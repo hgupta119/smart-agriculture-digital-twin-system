@@ -2,11 +2,117 @@ import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
 /**
- * Centralized Gemini model name.
- * gemini-2.0-flash has significantly higher free-tier rate limits than gemini-3.5-flash.
- * Change this single constant to switch all AI modules at once.
+ * Centralized dynamic Gemini model selection.
+ * Fetches available models from Google API and selects the best one dynamically.
  */
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+let cachedModels: string[] = [];
+let currentModelIndex = 0;
+let cachedGeminiModel: string | null = null;
+let GEMINI_MODEL = process.env.GEMINI_MODEL || "";
+
+function getModelScore(modelName: string): number {
+  const name = modelName.toLowerCase();
+  let score = 0;
+
+  // Prefer newer major versions if mentioned in the model name
+  if (name.includes('gemini-2.5')) {
+    score += 50;
+  } else if (name.includes('gemini-2.0')) {
+    score += 40;
+  } else if (name.includes('gemini-1.5')) {
+    score += 30;
+  } else if (name.includes('gemini-1.0')) {
+    score += 20;
+  } else {
+    score += 10;
+  }
+
+  // Tier preferences: pro > flash > flash-lite / others
+  if (name.includes('-pro') || name.includes('pro-')) {
+    score += 5;
+  } else if (name.includes('-flash-lite')) {
+    score += 1;
+  } else if (name.includes('-flash') || name.includes('flash-')) {
+    score += 3;
+  }
+
+  // Deprioritize experimental, tuning, or temporary models
+  if (name.includes('exp') || name.includes('experimental') || name.includes('preview')) {
+    score -= 10;
+  }
+  if (name.includes('tuning') || name.includes('tuned')) {
+    score -= 20;
+  }
+
+  return score;
+}
+
+async function getSupportedModel(apiKey: string, forceNext = false): Promise<string> {
+  if (cachedGeminiModel && !forceNext) {
+    return cachedGeminiModel;
+  }
+
+  if (cachedModels.length > 0 && forceNext) {
+    currentModelIndex++;
+    if (currentModelIndex < cachedModels.length) {
+      cachedGeminiModel = cachedModels[currentModelIndex];
+      GEMINI_MODEL = cachedGeminiModel;
+      console.log(`[AI Init] Switched model to next available: ${cachedGeminiModel} (index ${currentModelIndex}/${cachedModels.length})`);
+      return cachedGeminiModel;
+    } else {
+      console.warn(`[AI Init] Exhausted all available models in cache. Re-fetching model list...`);
+      cachedModels = [];
+      currentModelIndex = 0;
+    }
+  }
+
+  console.log(`[AI Init] Fetching available Gemini models from API...`);
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+  );
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error(`[AI Init Error] Failed to fetch models: HTTP ${res.status} | Body: ${errBody}`);
+    throw new Error(`Unable to fetch Gemini models (HTTP ${res.status})`);
+  }
+
+  const data = await res.json();
+  const available = (data.models || [])
+    .filter((m: any) =>
+      (m.supportedGenerationMethods || []).includes("generateContent")
+    )
+    .map((m: any) => m.name);
+
+  if (available.length === 0) {
+    throw new Error("No Gemini generateContent models found in API response.");
+  }
+
+  // Rank the available models
+  const ranked = available.map((name: string) => ({
+    name,
+    score: getModelScore(name)
+  }));
+
+  // If a GEMINI_MODEL env var exists, we can boost it to be chosen first if it exists in available models
+  const envModel = process.env.GEMINI_MODEL;
+  if (envModel) {
+    const matched = ranked.find((r: any) => r.name.toLowerCase() === envModel.toLowerCase() || r.name.toLowerCase().endsWith(envModel.toLowerCase()));
+    if (matched) {
+      matched.score += 1000; // Boost to top
+    }
+  }
+
+  ranked.sort((a: any, b: any) => b.score - a.score);
+  cachedModels = ranked.map((r: any) => r.name);
+  currentModelIndex = 0;
+  cachedGeminiModel = cachedModels[0];
+  GEMINI_MODEL = cachedGeminiModel;
+
+  console.log(`[AI Init] Available Ranked Models:`, cachedModels);
+  console.log(`[AI Init] Selected Model: ${cachedGeminiModel}`);
+  return cachedGeminiModel;
+}
 
 function maskKey(key: string | undefined): string {
   if (!key) return 'NOT_SET';
@@ -114,14 +220,16 @@ export const getAIProvider = (): 'openai' | 'gemini' | 'mock' => {
  * Includes automatic retry with exponential backoff for 429 RESOURCE_EXHAUSTED errors.
  */
 async function callGeminiRest(model: string, payload: any, apiKey: string, moduleName: string, maxRetries: number = 3): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const maskedUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=MASKED`;
-  console.log(`\n[Gemini Request] Module: ${moduleName}`);
-  console.log(`  Key:   ${maskKey(apiKey)}`);
-  console.log(`  Model: ${model}`);
-  console.log(`  URL:   ${maskedUrl}`);
+  let activeModel = await getSupportedModel(apiKey);
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
+    const maskedUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=MASKED`;
+    console.log(`\n[Gemini Request] Module: ${moduleName}`);
+    console.log(`  Key:   ${maskKey(apiKey)}`);
+    console.log(`  Model: ${activeModel}`);
+    console.log(`  URL:   ${maskedUrl}`);
+
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -131,10 +239,30 @@ async function callGeminiRest(model: string, payload: any, apiKey: string, modul
 
       console.log(`[Gemini Response] Module: ${moduleName} | Attempt: ${attempt}/${maxRetries} | HTTP Status: ${res.status} ${res.statusText}`);
 
-      // On ANY non-OK response, log the FULL error body before deciding what to do
       if (!res.ok) {
         const errBody = await res.text();
         console.error(`[Gemini FULL Error Body] Module: ${moduleName} | Status: ${res.status} | Body:\n${errBody}`);
+
+        // If the model is not found (404/NOT_FOUND or specific API message)
+        const isNotFound = res.status === 404 || 
+                           errBody.includes("NOT_FOUND") || 
+                           errBody.includes("is no longer available") || 
+                           errBody.includes("model is not found") ||
+                           errBody.includes("Model not found") ||
+                           (errBody.includes("models/") && errBody.includes("not found"));
+
+        if (isNotFound) {
+          console.warn(`[Gemini Model Fallback] Model ${activeModel} is not available (HTTP ${res.status}). Switching to the next available model...`);
+          try {
+            activeModel = await getSupportedModel(apiKey, true);
+            // Reset attempt counter so this fallback attempt doesn't count against retry limits
+            attempt = 0;
+            continue;
+          } catch (fallbackErr: any) {
+            console.error(`[Gemini Model Fallback Error] Failed to switch models: ${fallbackErr.message}`);
+            throw new Error(`Gemini API Error (HTTP ${res.status}): ${errBody.substring(0, 500)}`);
+          }
+        }
 
         // Only retry on 429; all other errors are fatal
         if (res.status === 429 && attempt < maxRetries) {
