@@ -32,7 +32,8 @@ function isVerifiedPublicModel(modelName: string): boolean {
 }
 
 async function validateModel(modelName: string, apiKey: string): Promise<boolean> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  const cleanModelName = modelName.startsWith('models/') ? modelName.substring(7) : modelName;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModelName}:generateContent?key=${apiKey}`;
   const probePayload = {
     contents: [{ parts: [{ text: "ping" }] }],
     generationConfig: { maxOutputTokens: 1 }
@@ -281,8 +282,9 @@ async function callGeminiRest(model: string, payload: any, apiKey: string, modul
   const maxModelSwitches = 10;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
-    const maskedUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=MASKED`;
+    const cleanModel = activeModel.startsWith('models/') ? activeModel.substring(7) : activeModel;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
+    const maskedUrl = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=MASKED`;
     console.log(`\n[Gemini Request] Module: ${moduleName}`);
     console.log(`  Key:   ${maskKey(apiKey)}`);
     console.log(`  Model: ${activeModel}`);
