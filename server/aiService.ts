@@ -5,10 +5,11 @@ import OpenAI from 'openai';
  * Centralized dynamic Gemini model selection.
  * Fetches available models from Google API and validates them before use.
  */
+
 let cachedModels: string[] = [];
 let currentModelIndex = 0;
-let cachedGeminiModel: string | null = null;
-let GEMINI_MODEL = process.env.GEMINI_MODEL || "";
+let cachedGeminiModel: string | null = process.env.GEMINI_MODEL || "models/gemini-2.5-flash";
+let GEMINI_MODEL = process.env.GEMINI_MODEL || "models/gemini-2.5-flash";
 const failedModels = new Set<string>();
 
 const STATIC_FALLBACK_MODELS = [
