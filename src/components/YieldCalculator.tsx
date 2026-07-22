@@ -5,7 +5,7 @@ import {
   Download, Search, BarChart2, PieChart as PieChartIcon, Activity, Leaf, CheckCircle2,
   AlertTriangle, ChevronLeft, ChevronRight, X
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
   ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell, LineChart, Line,

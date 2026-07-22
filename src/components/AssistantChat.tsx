@@ -6,7 +6,7 @@ import {
   FileText, Activity, Map, Sparkles, Sprout, Cloud, TrendingUp, AlertTriangle, 
   Check, PanelLeftClose, PanelLeftOpen, Loader2, X, Eye
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { User } from '../types';

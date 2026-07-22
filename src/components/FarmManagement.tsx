@@ -7,7 +7,7 @@ import {
   Compass, TrendingUp, Gauge, FileText, Sparkles, Clock, Pin, ShieldCheck,
   TrendingDown, ShieldAlert, Zap, Waves, ClipboardList, Bell
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Farm, User } from '../types';
 import { CROP_TYPES } from '../utils/simData';
 import { fetch } from '../utils/api';

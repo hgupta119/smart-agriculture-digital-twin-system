@@ -5,7 +5,7 @@ import {
   CheckCircle2, Download, Search, FileText, BarChart2, Sparkles,
   Calendar, Info, Plus, ChevronDown, ChevronUp, Zap, CloudRain, Award, Clock
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,

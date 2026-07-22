@@ -6,7 +6,7 @@ import {
   Star, MoreVertical, ShieldCheck, Trash2, ChevronLeft, ChevronRight,
   CheckCircle2, X, AlertTriangle, Archive, BookOpen, Clock, Pin, Compass, Info, TrendingUp
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
   ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell, LineChart, Line

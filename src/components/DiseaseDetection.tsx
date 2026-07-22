@@ -5,7 +5,7 @@ import {
   Droplets, FileText, Download, Search, 
   BarChart2, TrendingUp, AlertCircle, RefreshCw, Eye
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
   ResponsiveContainer, PieChart, Pie, Cell, Legend 

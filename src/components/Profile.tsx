@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { 
   User as UserIcon, Mail, Layers, LogOut, Edit2, Loader2,
   Lock, Eye, EyeOff, Bell, Monitor, Activity, ShieldAlert, LifeBuoy, Info,

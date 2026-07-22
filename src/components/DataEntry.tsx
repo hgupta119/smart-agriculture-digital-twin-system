@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { 
   Plus, Loader2, CheckCircle2, AlertCircle, Sprout, Layers, 
   MapPin, Wifi, Activity, Droplets, Microscope, Sun, Thermometer, Wind,

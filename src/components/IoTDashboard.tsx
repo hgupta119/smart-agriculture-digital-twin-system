@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wifi, WifiOff, Thermometer, Droplets, Droplet, Sun, CloudRain,
   Activity, Zap, Map as MapIcon, Settings, Settings2, Sliders, Bell, AlertTriangle,
