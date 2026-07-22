@@ -3,114 +3,170 @@ import OpenAI from 'openai';
 
 /**
  * Centralized dynamic Gemini model selection.
- * Fetches available models from Google API and selects the best one dynamically.
+ * Fetches available models from Google API and validates them before use.
  */
 let cachedModels: string[] = [];
 let currentModelIndex = 0;
 let cachedGeminiModel: string | null = null;
 let GEMINI_MODEL = process.env.GEMINI_MODEL || "";
+const failedModels = new Set<string>();
 
-function getModelScore(modelName: string): number {
+const STATIC_FALLBACK_MODELS = [
+  "models/gemini-2.5-flash",
+  "models/gemini-2.5-pro",
+  "models/gemini-2.0-flash",
+  "models/gemini-2.0-flash-lite"
+];
+
+const ALLOWED_MODELS = [
+  "models/gemini-2.5-flash",
+  "models/gemini-2.5-pro",
+  "models/gemini-2.0-flash",
+  "models/gemini-2.0-flash-lite"
+];
+
+function isVerifiedPublicModel(modelName: string): boolean {
   const name = modelName.toLowerCase();
-  let score = 0;
+  const standardName = name.startsWith('models/') ? name : `models/${name}`;
+  return ALLOWED_MODELS.includes(standardName);
+}
 
-  // Prefer newer major versions if mentioned in the model name
-  if (name.includes('gemini-2.5')) {
-    score += 50;
-  } else if (name.includes('gemini-2.0')) {
-    score += 40;
-  } else if (name.includes('gemini-1.5')) {
-    score += 30;
-  } else if (name.includes('gemini-1.0')) {
-    score += 20;
-  } else {
-    score += 10;
+async function validateModel(modelName: string, apiKey: string): Promise<boolean> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  const probePayload = {
+    contents: [{ parts: [{ text: "ping" }] }],
+    generationConfig: { maxOutputTokens: 1 }
+  };
+  try {
+    console.log(`[AI Init] Validating model candidate: ${modelName}`);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(probePayload)
+    });
+    if (res.ok) {
+      console.log(`[AI Init] Model ${modelName} is VALID (HTTP 200)`);
+      return true;
+    } else {
+      const bodyText = await res.text();
+      console.warn(`[AI Init] Model ${modelName} validation FAILED (HTTP ${res.status}): ${bodyText}`);
+      return false;
+    }
+  } catch (e: any) {
+    console.error(`[AI Init] Model ${modelName} validation error: ${e.message}`);
+    return false;
   }
-
-  // Tier preferences: pro > flash > flash-lite / others
-  if (name.includes('-pro') || name.includes('pro-')) {
-    score += 5;
-  } else if (name.includes('-flash-lite')) {
-    score += 1;
-  } else if (name.includes('-flash') || name.includes('flash-')) {
-    score += 3;
-  }
-
-  // Deprioritize experimental, tuning, or temporary models
-  if (name.includes('exp') || name.includes('experimental') || name.includes('preview')) {
-    score -= 10;
-  }
-  if (name.includes('tuning') || name.includes('tuned')) {
-    score -= 20;
-  }
-
-  return score;
 }
 
 async function getSupportedModel(apiKey: string, forceNext = false): Promise<string> {
-  if (cachedGeminiModel && !forceNext) {
+  if (cachedGeminiModel && !forceNext && !failedModels.has(cachedGeminiModel)) {
     return cachedGeminiModel;
   }
 
-  if (cachedModels.length > 0 && forceNext) {
-    currentModelIndex++;
-    if (currentModelIndex < cachedModels.length) {
-      cachedGeminiModel = cachedModels[currentModelIndex];
-      GEMINI_MODEL = cachedGeminiModel;
-      console.log(`[AI Init] Switched model to next available: ${cachedGeminiModel} (index ${currentModelIndex}/${cachedModels.length})`);
+  if (cachedGeminiModel && forceNext) {
+    console.log(`[AI Init] Blacklisting failed model: ${cachedGeminiModel}`);
+    failedModels.add(cachedGeminiModel);
+    cachedGeminiModel = null;
+  }
+
+  // Filter candidates from currently cached models
+  let candidates = cachedModels.filter(m => !failedModels.has(m));
+  
+  while (candidates.length > 0) {
+    const candidate = candidates[0];
+    const isValid = await validateModel(candidate, apiKey);
+    if (isValid) {
+      cachedGeminiModel = candidate;
+      GEMINI_MODEL = candidate;
+      cachedModels = candidates;
+      currentModelIndex = 0;
+      console.log(`[AI Init] Using validated cached model: ${cachedGeminiModel}`);
       return cachedGeminiModel;
     } else {
-      console.warn(`[AI Init] Exhausted all available models in cache. Re-fetching model list...`);
-      cachedModels = [];
-      currentModelIndex = 0;
+      failedModels.add(candidate);
+      candidates.shift();
     }
   }
 
   console.log(`[AI Init] Fetching available Gemini models from API...`);
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
-  );
+  let fetchedList: string[] = [];
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+    );
 
-  if (!res.ok) {
-    const errBody = await res.text();
-    console.error(`[AI Init Error] Failed to fetch models: HTTP ${res.status} | Body: ${errBody}`);
-    throw new Error(`Unable to fetch Gemini models (HTTP ${res.status})`);
+    if (res.ok) {
+      const data = await res.json();
+      const rawModels = (data.models || []);
+      
+      for (const m of rawModels) {
+        const name = m.name;
+        const supportsGen = (m.supportedGenerationMethods || []).includes("generateContent");
+        const isAllowed = isVerifiedPublicModel(name);
+        
+        if (supportsGen && isAllowed && !failedModels.has(name)) {
+          fetchedList.push(name);
+          console.log(`[AI Init] Accepted allowed model candidate: ${name}`);
+        } else if (isAllowed) {
+          console.log(`[AI Init] Rejected allowed model candidate: ${name} (supportsGen=${supportsGen}, isFailed=${failedModels.has(name)})`);
+        }
+      }
+    } else {
+      const errBody = await res.text();
+      console.error(`[AI Init Error] Failed to fetch models: HTTP ${res.status} | Body: ${errBody}`);
+    }
+  } catch (e: any) {
+    console.error(`[AI Init Error] Network/fetch error while retrieving models list: ${e.message}`);
   }
 
-  const data = await res.json();
-  const available = (data.models || [])
-    .filter((m: any) =>
-      (m.supportedGenerationMethods || []).includes("generateContent")
-    )
-    .map((m: any) => m.name);
-
-  if (available.length === 0) {
-    throw new Error("No Gemini generateContent models found in API response.");
+  // If no candidates from API, use fallback models
+  if (fetchedList.length === 0) {
+    console.warn(`[AI Init] No valid candidates found from API. Trying static fallbacks.`);
+    fetchedList = STATIC_FALLBACK_MODELS.filter(m => !failedModels.has(m));
   }
 
-  // Rank the available models
-  const ranked = available.map((name: string) => ({
-    name,
-    score: getModelScore(name)
-  }));
+  // Sort model candidates strictly to prioritize allowed order
+  fetchedList.sort((a, b) => {
+    const idxA = ALLOWED_MODELS.indexOf(a.startsWith('models/') ? a : `models/${a}`);
+    const idxB = ALLOWED_MODELS.indexOf(b.startsWith('models/') ? b : `models/${b}`);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return 0;
+  });
 
-  // If a GEMINI_MODEL env var exists, we can boost it to be chosen first if it exists in available models
+  // If a GEMINI_MODEL env var exists, prioritize it first if it is not blacklisted
   const envModel = process.env.GEMINI_MODEL;
   if (envModel) {
-    const matched = ranked.find((r: any) => r.name.toLowerCase() === envModel.toLowerCase() || r.name.toLowerCase().endsWith(envModel.toLowerCase()));
-    if (matched) {
-      matched.score += 1000; // Boost to top
+    const stdEnvModel = envModel.toLowerCase().startsWith('models/') ? envModel.toLowerCase() : `models/${envModel.toLowerCase()}`;
+    if (ALLOWED_MODELS.includes(stdEnvModel) && !failedModels.has(stdEnvModel)) {
+      fetchedList = fetchedList.filter(m => m.toLowerCase() !== stdEnvModel);
+      const originalCasing = ALLOWED_MODELS.find(m => m.toLowerCase() === stdEnvModel) || envModel;
+      fetchedList = [originalCasing, ...fetchedList];
     }
   }
 
-  ranked.sort((a: any, b: any) => b.score - a.score);
-  cachedModels = ranked.map((r: any) => r.name);
-  currentModelIndex = 0;
-  cachedGeminiModel = cachedModels[0];
-  GEMINI_MODEL = cachedGeminiModel;
+  cachedModels = fetchedList;
 
-  console.log(`[AI Init] Available Ranked Models:`, cachedModels);
-  console.log(`[AI Init] Selected Model: ${cachedGeminiModel}`);
+  // Validate candidates one by one
+  while (cachedModels.length > 0) {
+    const candidate = cachedModels[0];
+    const isValid = await validateModel(candidate, apiKey);
+    if (isValid) {
+      cachedGeminiModel = candidate;
+      GEMINI_MODEL = candidate;
+      console.log(`[AI Init] Validated and selected model: ${cachedGeminiModel}`);
+      return cachedGeminiModel;
+    } else {
+      failedModels.add(candidate);
+      cachedModels.shift();
+    }
+  }
+
+  // Fallback of last resort if absolutely everything failed
+  console.error(`[AI Init FATAL] All fetched and fallback models failed validation! Defaulting to models/gemini-2.5-flash.`);
+  cachedGeminiModel = "models/gemini-2.5-flash";
+  GEMINI_MODEL = cachedGeminiModel;
   return cachedGeminiModel;
 }
 
@@ -221,6 +277,8 @@ export const getAIProvider = (): 'openai' | 'gemini' | 'mock' => {
  */
 async function callGeminiRest(model: string, payload: any, apiKey: string, moduleName: string, maxRetries: number = 3): Promise<string> {
   let activeModel = await getSupportedModel(apiKey);
+  let modelSwitchCount = 0;
+  const maxModelSwitches = 10;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
@@ -253,6 +311,14 @@ async function callGeminiRest(model: string, payload: any, apiKey: string, modul
 
         if (isNotFound) {
           console.warn(`[Gemini Model Fallback] Model ${activeModel} is not available (HTTP ${res.status}). Switching to the next available model...`);
+          failedModels.add(activeModel); // Permanently blacklist this failed model
+
+          modelSwitchCount++;
+          if (modelSwitchCount > maxModelSwitches) {
+            console.error(`[Gemini Model Fallback] Exceeded maximum model fallback attempts (${maxModelSwitches}). Failing request.`);
+            throw new Error(`Gemini API Error (HTTP 404): Exhausted all available models due to consecutive 404 errors.`);
+          }
+
           try {
             activeModel = await getSupportedModel(apiKey, true);
             // Reset attempt counter so this fallback attempt doesn't count against retry limits
