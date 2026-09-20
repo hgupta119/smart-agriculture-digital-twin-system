@@ -407,7 +407,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 ## 👤 Author
-- **Harshit Gupta** - *Lead Systems Architect & Full-Stack AI Engineer* - [GitHub](https://github.com/mishraanshul870-lab)
+- **Harshit Gupta** - *Lead Systems Architect & Full-Stack AI Engineer* - [GitHub](https://github.com/hgupta119)
 
 ---
 
