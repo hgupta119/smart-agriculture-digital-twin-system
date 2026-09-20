@@ -407,7 +407,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 ## 👤 Author
-- **Anshul Mishra** - *Lead Systems Architect & Full-Stack AI Engineer* - [GitHub](https://github.com/mishraanshul870-lab)
+- **Harshit Gupta** - *Lead Systems Architect & Full-Stack AI Engineer* - [GitHub](https://github.com/mishraanshul870-lab)
 
 ---
 
@@ -417,7 +417,7 @@ Contributions are welcome! Please feel free to open issues or submit pull reques
 ---
 
 ## 📞 Support
-For support, technical queries, or feedback, please reach out via GitHub Issues or contact the author directly at [mishraanshul870@gmail.com](mailto:mishraanshul870@gmail.com).
+For support, technical queries, or feedback, please reach out via GitHub Issues or contact the author directly at [hgupta5186@gmail.com](mailto:hgupta5186@gmail.com).
 
 ---
 
